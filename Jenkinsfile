@@ -22,7 +22,7 @@ pipeline {
 
     environment {
         IMAGE_NAME = 'niharikarao15/transport-dashboard'
-        DOCKER_EXE = 'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe'
+        DOCKER_EXE = 'C:\\Users\\Niharika\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe'
         KUBECTL_EXE = 'C:\\Program Files\\Docker\\Docker\\resources\\bin\\kubectl.exe'
         KUBECONFIG = 'C:\\Users\\Niharika\\.kube\\config'
     }
