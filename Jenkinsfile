@@ -124,10 +124,20 @@ pipeline {
                             throw "Docker Hub credentials are empty. Check 'dockerhub-credentials' in Jenkins."
                         }
 
-                        try {
-                            $token | & $env:DOCKER_EXE login -u $user --password-stdin
+                        # Write the token as raw bytes (no BOM, no trailing newline).
+                        # Piping through PowerShell 5.1 can re-encode the text and
+                        # corrupt the token, which Docker Hub reports as
+                        # "incorrect username or password".
+                        $tokenFile = Join-Path $env:WORKSPACE "dockerhub-token.tmp"
+                        [System.IO.File]::WriteAllText($tokenFile, $token, (New-Object System.Text.UTF8Encoding($false)))
 
-                            if ($LASTEXITCODE -ne 0) {
+                        try {
+                            $login = Start-Process -FilePath $env:DOCKER_EXE `
+                                -ArgumentList @('login', '-u', $user, '--password-stdin') `
+                                -RedirectStandardInput $tokenFile `
+                                -NoNewWindow -Wait -PassThru
+
+                            if ($login.ExitCode -ne 0) {
                                 throw "Docker Hub login failed. Use your Docker Hub USERNAME (not email) and a valid Read & Write access token."
                             }
 
@@ -138,7 +148,8 @@ pipeline {
                             }
                         }
                         finally {
-                            # Always log out, even if login or push failed.
+                            # Always remove the token file and log out.
+                            Remove-Item $tokenFile -Force -ErrorAction SilentlyContinue
                             & $env:DOCKER_EXE logout
                         }
                     '''
