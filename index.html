@@ -1,0 +1,136 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>City Transit | Monitoring Dashboard</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: Arial, sans-serif;
+      background: #101827; color: #edf2f7;
+    }
+    header { background: #17243a; padding: 24px 6%; border-bottom: 3px solid #22d3ee; }
+    header h1 { margin: 0 0 8px; color: #67e8f9; }
+    header p { margin: 0; color: #cbd5e1; }
+    main { max-width: 1150px; margin: auto; padding: 24px; }
+    .summary { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+    .metric, .panel {
+      background: #1b293e; border: 1px solid #334155;
+      border-radius: 10px; padding: 18px;
+    }
+    .metric { flex: 1; min-width: 150px; }
+    .metric strong { display: block; color: #67e8f9; font-size: 25px; margin-top: 8px; }
+    input {
+      padding: 11px; width: 100%; max-width: 350px; margin: 12px 0;
+      border: 1px solid #64748b; border-radius: 6px;
+    }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; background: #1b293e; }
+    th, td { padding: 13px; text-align: left; border-bottom: 1px solid #334155; }
+    th { color: #67e8f9; }
+    .status, .crowd { font-weight: bold; }
+    .normal, .low { color: #86efac; }
+    .moderate { color: #fde68a; }
+    .high, .disrupted { color: #fca5a5; }
+    .panel { margin-top: 20px; }
+    .panel h2 { margin-top: 0; color: #67e8f9; }
+    li { margin: 10px 0; }
+    footer { padding: 20px; text-align: center; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>City Transit Monitoring Dashboard</h1>
+  <p>Live-style public transport information · Simulated demonstration data</p>
+</header>
+
+<main>
+  <section class="summary">
+    <div class="metric">Routes monitored<strong id="routeCount">0</strong></div>
+    <div class="metric">Service disruptions<strong id="disruptionCount">0</strong></div>
+    <div class="metric">Data mode<strong>SIMULATED</strong></div>
+  </section>
+
+  <section>
+    <h2>Bus Routes and Estimated Arrivals</h2>
+    <label for="routeFilter">Filter by route number</label><br>
+    <input id="routeFilter" type="text" placeholder="Enter route, e.g. 101"
+           aria-label="Filter buses by route number">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Route</th><th>From</th><th>To</th>
+            <th>ETA</th><th>Crowd Level</th><th>Service Status</th>
+          </tr>
+        </thead>
+        <tbody id="routeTable"></tbody>
+      </table>
+    </div>
+    <p id="emptyMessage" hidden>No routes match your search.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Service Disruptions</h2>
+    <ul id="disruptionList"></ul>
+  </section>
+
+  <section class="panel">
+    <h2>Passenger Advisories</h2>
+    <ul>
+      <li>Allow extra travel time during peak hours.</li>
+      <li>Check temporary stop closures before starting your journey.</li>
+      <li>Use designated boarding areas and follow staff instructions.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>Public Transport Authority · Demonstration dashboard · Not live operational data</footer>
+
+<script>
+  const buses = [
+    { route: "101", from: "Central Station", to: "Airport",
+      eta: 5, crowd: "Moderate", status: "On time" },
+    { route: "205", from: "City Centre", to: "University",
+      eta: 12, crowd: "High", status: "Delayed" },
+    { route: "310", from: "Riverside", to: "Technology Park",
+      eta: 8, crowd: "Low", status: "On time" },
+    { route: "412", from: "North Terminal", to: "South Terminal",
+      eta: 18, crowd: "Moderate", status: "Diverted" }
+  ];
+
+  const disruptions = [
+    "Route 205: approximately 10-minute delay due to traffic congestion.",
+    "Route 412: diversion via Market Road; Central Market stop temporarily closed."
+  ];
+
+  function renderRoutes() {
+    const filter = document.getElementById("routeFilter").value.trim().toLowerCase();
+    const matches = buses.filter(bus => bus.route.toLowerCase().includes(filter));
+
+    document.getElementById("routeTable").innerHTML = matches.map(bus => {
+      const crowdClass = bus.crowd.toLowerCase();
+      const statusClass = bus.status === "On time" ? "normal" : "disrupted";
+      return `<tr>
+        <td>${bus.route}</td><td>${bus.from}</td><td>${bus.to}</td>
+        <td>${bus.eta} min</td>
+        <td class="crowd ${crowdClass}">${bus.crowd}</td>
+        <td class="status ${statusClass}">${bus.status}</td>
+      </tr>`;
+    }).join("");
+
+    document.getElementById("emptyMessage").hidden = matches.length !== 0;
+  }
+
+  document.getElementById("routeFilter").addEventListener("input", renderRoutes);
+  document.getElementById("routeCount").textContent = buses.length;
+  document.getElementById("disruptionCount").textContent = disruptions.length;
+  document.getElementById("disruptionList").innerHTML =
+    disruptions.map(item => `<li>${item}</li>`).join("");
+
+  renderRoutes();
+</script>
+</body>
+</html>
