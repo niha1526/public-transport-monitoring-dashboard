@@ -1,10 +1,11 @@
-
 pipeline {
     agent any
 
     options {
         skipDefaultCheckout(true)
         timestamps()
+        timeout(time: 20, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
     parameters {
@@ -21,10 +22,11 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME = 'niharikarao15/transport-dashboard'
-        DOCKER_EXE = 'C:\\Users\\Niharika\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe'
-        KUBECTL_EXE = 'C:\\Program Files\\Docker\\Docker\\resources\\bin\\kubectl.exe'
-        KUBECONFIG = 'C:\\Users\\Niharika\\.kube\\config'
+        IMAGE_NAME  = 'niharikarao15/transport-dashboard'
+        DOCKER_EXE  = 'C:\\Users\\Niharika\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe'
+        // FIX: kubectl lives in the same folder as docker.exe on this machine
+        KUBECTL_EXE = 'C:\\Users\\Niharika\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\kubectl.exe'
+        KUBECONFIG  = 'C:\\Users\\Niharika\\.kube\\config'
     }
 
     stages {
@@ -83,6 +85,10 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 powershell '''
+                    # Docker prints warnings (e.g. legacy builder) to stderr.
+                    # Don't let PowerShell treat that as a terminating error.
+                    $ErrorActionPreference = 'Continue'
+
                     if (!(Test-Path $env:DOCKER_EXE)) {
                         throw "Docker executable not found: $env:DOCKER_EXE"
                     }
@@ -102,28 +108,39 @@ pipeline {
             steps {
                 withCredentials([
                     usernamePassword(
-                        credentialsId: 'dockerhub-credentials-v2',
+                        credentialsId: 'dockerhub-credentials',
                         usernameVariable: 'DOCKERHUB_USER',
                         passwordVariable: 'DOCKERHUB_TOKEN'
                     )
                 ]) {
                     powershell '''
-                        $env:DOCKERHUB_TOKEN |
-                            & $env:DOCKER_EXE login `
-                                -u $env:DOCKERHUB_USER --password-stdin
+                        $ErrorActionPreference = 'Continue'
 
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Docker Hub login failed"
+                        # Guard against a pasted token/username with stray whitespace.
+                        $user  = $env:DOCKERHUB_USER.Trim()
+                        $token = $env:DOCKERHUB_TOKEN.Trim()
+
+                        if ([string]::IsNullOrWhiteSpace($user) -or [string]::IsNullOrWhiteSpace($token)) {
+                            throw "Docker Hub credentials are empty. Check 'dockerhub-credentials' in Jenkins."
                         }
 
-                        & $env:DOCKER_EXE push `
-                            "$env:IMAGE_NAME`:$env:BUILD_NUMBER"
+                        try {
+                            $token | & $env:DOCKER_EXE login -u $user --password-stdin
 
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Docker image push failed"
+                            if ($LASTEXITCODE -ne 0) {
+                                throw "Docker Hub login failed. Use your Docker Hub USERNAME (not email) and a valid Read & Write access token."
+                            }
+
+                            & $env:DOCKER_EXE push "$env:IMAGE_NAME`:$env:BUILD_NUMBER"
+
+                            if ($LASTEXITCODE -ne 0) {
+                                throw "Docker image push failed"
+                            }
                         }
-
-                        & $env:DOCKER_EXE logout
+                        finally {
+                            # Always log out, even if login or push failed.
+                            & $env:DOCKER_EXE logout
+                        }
                     '''
                 }
             }
@@ -145,6 +162,8 @@ pipeline {
 
             steps {
                 powershell '''
+                    $ErrorActionPreference = 'Continue'
+
                     if (!(Test-Path $env:KUBECTL_EXE)) {
                         throw "kubectl not found: $env:KUBECTL_EXE"
                     }
@@ -163,10 +182,11 @@ pipeline {
                         throw "Kubernetes cluster unavailable"
                     }
 
-                    # Create the initial Deployment if it does not exist.
-                    & $env:KUBECTL_EXE get deployment transport-dashboard 2>$null
+                    # Create the initial Deployment + Service if they do not exist.
+                    & $env:KUBECTL_EXE get deployment transport-dashboard *> $null
+                    $deploymentExists = ($LASTEXITCODE -eq 0)
 
-                    if ($LASTEXITCODE -ne 0) {
+                    if (-not $deploymentExists) {
                         & $env:KUBECTL_EXE apply -f deployment.yaml
 
                         if ($LASTEXITCODE -ne 0) {
@@ -174,7 +194,7 @@ pipeline {
                         }
                     }
 
-                    # Update directly to the newly built application image.
+                    # Update to the newly built image.
                     & $env:KUBECTL_EXE set image `
                         deployment/transport-dashboard `
                         "transport-dashboard=$env:IMAGE_NAME`:$env:BUILD_NUMBER"
@@ -190,11 +210,13 @@ pipeline {
                     if ($LASTEXITCODE -ne 0) {
                         Write-Output "ROLLOUT FAILED - AUTOMATIC ROLLBACK STARTED"
 
+                        & $env:KUBECTL_EXE get pods -l app=transport-dashboard
+
                         & $env:KUBECTL_EXE rollout undo `
                             deployment/transport-dashboard
 
                         if ($LASTEXITCODE -ne 0) {
-                            throw "Rollback command failed"
+                            throw "Rollback command failed (is there a previous revision to roll back to?)"
                         }
 
                         & $env:KUBECTL_EXE rollout status `
@@ -213,7 +235,7 @@ pipeline {
                     & $env:KUBECTL_EXE get pods -l app=transport-dashboard
                     & $env:KUBECTL_EXE get service transport-dashboard-service
 
-                    Write-Output "Deployment successful"
+                    Write-Output "Deployment successful. Open http://localhost:30083"
                 '''
             }
         }
